@@ -1,12 +1,93 @@
 version: '3.8'
 services:
-  web:
+  web-simplezabbix:
     build: .
     ports:
-      - "80:5000"
+      - "5000:5000"
     env_file:
       - .env
     environment:
       - FLASK_DEBUG=1
+      - VIRTUAL_HOST=simplezabbix.local
+      - VIRTUAL_PORT=5000
     volumes:
       - .:/app 
+      
+  zabbix-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+    volumes:
+      - zabbix-db-data:/var/lib/postgresql/data
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:4.0-ubuntu-latest
+    environment:
+      DB_SERVER_HOST: zabbix-db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      ZBX_SERVER_NAME: SimpleZabbix
+    depends_on:
+      - zabbix-db
+    ports:
+      - "10051:10051"
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:4.0-ubuntu-latest
+    environment:
+      DB_SERVER_HOST: zabbix-db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      ZBX_SERVER_NAME: SimpleZabbix
+      PHP_TZ: America/Sao_Paulo
+      ZBX_DEFAULT_ADMIN_USER: Admin
+      ZBX_DEFAULT_ADMIN_PASS: zabbix
+      VIRTUAL_HOST: zabbix.local
+      VIRTUAL_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - zabbix-db
+      - zabbix-server
+    expose:
+      - "8080"
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent:4.0-ubuntu-latest
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_HOSTNAME: "Zabbix server"
+    depends_on:
+      - zabbix-server
+    restart: always
+    expose:
+      - "10050"
+
+  nginx-proxy-simplezabbix:
+    image: jwilder/nginx-proxy:alpine
+    container_name: nginx-proxy-simplezabbix
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    restart: always
+
+  zabbix-fix-agent:
+    image: python:3.11-slim
+    depends_on:
+      - zabbix-web
+      - zabbix-server
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./zabbix_fix_agent.py:/app/zabbix_fix_agent.py:ro
+    working_dir: /app
+    command: /bin/sh -c "pip install requests && python zabbix_fix_agent.py"
+    restart: "no"
+
+volumes:
+  zabbix-db-data: 
