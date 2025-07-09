@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template_string
 import requests
 from dotenv import load_dotenv
 
@@ -11,6 +11,7 @@ ZABBIX_URL = os.getenv('ZABBIX_URL')
 
 app = Flask(__name__)
 
+# Função para autenticar no Zabbix
 def zabbix_login():
     payload = {
         "jsonrpc": "2.0",
@@ -26,6 +27,7 @@ def zabbix_login():
     result = response.json()
     return result.get('result')
 
+# Função para buscar hosts
 def get_zabbix_hosts(auth_token):
     payload = {
         "jsonrpc": "2.0",
@@ -46,7 +48,20 @@ def index():
     if not auth_token:
         return "Erro ao autenticar no Zabbix", 500
     hosts = get_zabbix_hosts(auth_token)
-    return render_template('hosts.html', hosts=hosts)
+    html = '''
+    <h1>Hosts do Zabbix</h1>
+    <table border="1">
+        <tr><th>ID</th><th>Host</th><th>Nome</th></tr>
+        {% for host in hosts %}
+        <tr>
+            <td>{{ host.hostid }}</td>
+            <td>{{ host.host }}</td>
+            <td>{{ host.name }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    '''
+    return render_template_string(html, hosts=hosts)
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(host="0.0.0.0", port=5000, debug=True) 
